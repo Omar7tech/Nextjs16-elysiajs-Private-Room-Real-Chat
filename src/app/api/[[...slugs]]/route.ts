@@ -7,7 +7,7 @@ import { connected } from 'process'
 const ROOM_TTL_SECONDS = 60 * 10;
 export const app = new Elysia({ prefix: '/api' })
     .post('/rooms/create', async () => {
-        const roomId = nanoid(15);
+        const roomId = nanoid(25);
         await redis.hset(`meta:${roomId}` , {
             connected: 0,
             createdAt: Date.now(),

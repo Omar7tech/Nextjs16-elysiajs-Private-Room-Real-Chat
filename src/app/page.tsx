@@ -3,6 +3,7 @@ import TextType from "@/components/TextType";
 import { client } from "@/lib/client";
 import { useMutation } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const ANIMALS = ['cat', 'dog', 'bird', 'mouse', 'rabbit', 'hamster', 'snake'];
@@ -19,6 +20,7 @@ const STORAGE_KEY = 'chat_username';
 export default function Home() {
   const [username, setUsername] = useState("No User Name");
   const [btnDisabled, setBtnDisabled] = useState(true);
+  const router = useRouter();
   useEffect(() => {
     const main = () => {
       const storedUsername = localStorage.getItem(STORAGE_KEY);
@@ -39,7 +41,10 @@ export default function Home() {
   const {mutate : createRoom} = useMutation({
     mutationFn: async () => {
         const res = await client.rooms.create.post();
-    }
+        if(res.status === 200){
+          router.push(`/room/${res.data?.roomId}`)
+        }
+      }
   })
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4">
