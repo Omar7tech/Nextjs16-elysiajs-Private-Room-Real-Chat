@@ -3,12 +3,16 @@ import { Elysia, t } from 'elysia'
 import { redis } from '@/lib/redis'
 import { nanoid } from 'nanoid'
 import { connected } from 'process'
+import { openapi } from '@elysiajs/openapi'
 
 const ROOM_TTL_SECONDS = 60 * 10;
 export const app = new Elysia({ prefix: '/api' })
+    .use
+    (openapi
+        ())
     .post('/rooms/create', async () => {
         const roomId = nanoid(25);
-        await redis.hset(`meta:${roomId}` , {
+        await redis.hset(`meta:${roomId}`, {
             connected: 0,
             createdAt: Date.now(),
         });

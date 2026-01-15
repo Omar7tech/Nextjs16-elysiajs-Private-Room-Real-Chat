@@ -1,5 +1,6 @@
 'use client'
 import TextType from "@/components/TextType";
+import Spinner from "@/components/ui/spinner";
 import { client } from "@/lib/client";
 import { useMutation } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
@@ -20,6 +21,7 @@ const STORAGE_KEY = 'chat_username';
 export default function Home() {
   const [username, setUsername] = useState("No User Name");
   const [btnDisabled, setBtnDisabled] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   useEffect(() => {
     const main = () => {
@@ -38,13 +40,17 @@ export default function Home() {
     main();
   }, []);
 
-  const {mutate : createRoom} = useMutation({
+  const { mutate: createRoom } = useMutation({
     mutationFn: async () => {
-        const res = await client.rooms.create.post();
-        if(res.status === 200){
-          router.push(`/room/${res.data?.roomId}`)
-        }
+      setIsLoading(true);
+      setBtnDisabled(true);
+      const res = await client.rooms.create.post();
+      if (res.status === 200) {
+        router.push(`/room/${res.data?.roomId}`)
       }
+      setIsLoading(false);
+      setBtnDisabled(false);
+    }
   })
   return (
     <main className="flex min-h-screen flex-col items-center justify-center p-4">
@@ -53,7 +59,7 @@ export default function Home() {
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-green-500">{">"}
             <TextType
-              text={["private_chat","self-destructing_chat"]}
+              text={["private_chat", "self-destructing_chat"]}
               typingSpeed={75}
               pauseDuration={5000}
               showCursor={true}
@@ -73,7 +79,14 @@ export default function Home() {
               </div>
 
             </div>
-            <button onClick={() => createRoom()}  disabled={btnDisabled} className="w-full bg-zinc-100 text-zinc-950 p-3  text-sm font-bold hover:bg-zinc-50 hover:text-black transition-colors mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Create Secure Room</button>
+            <button type="button" onClick={() => createRoom()} disabled={btnDisabled} className="gap-3 flex justify-center items-center w-full bg-zinc-100 text-zinc-950 p-3  text-sm font-bold hover:bg-zinc-50 hover:text-black transition-colors mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              {isLoading && (
+                <Spinner />
+              )}
+              <span>
+                Create Secure Room
+              </span>
+            </button>
           </div>
         </div>
       </div>
