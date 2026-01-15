@@ -2,6 +2,9 @@
 
 import { useParams } from "next/navigation"
 import { useRef, useState } from "react"
+import { useMutation } from "@tanstack/react-query"
+import { client } from "@/lib/client";
+import { useUsername } from "@/app/hooks/use-username";
 
 function formatTimeRemaining(seconds: number) {
     const minutes = Math.floor(seconds / 60);
@@ -11,8 +14,14 @@ function formatTimeRemaining(seconds: number) {
 
 function Page() {
     const params = useParams();
+    const username = useUsername();
     const roomId = (params as any).roomId as string;
     const [input, setInput] = useState("");
+    const { mutate: sendMessage , isPending } = useMutation({
+        mutationFn: async ({ text }: { text: string }) => {
+            await client.messages.post({ sender: username, text }, { query: { roomId } })
+        }
+    })
     const inputRef = useRef<HTMLInputElement>(null);
     const [copied, setCopied] = useState(false);
     const copyLink = () => {
@@ -52,12 +61,17 @@ function Page() {
                         <span className="absolute left-4  top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:animate-pulse group-focus-within:text-green-500">{">"}</span>
                         <input placeholder='Type your message...' onKeyDown={(e) => {
                             if (e.key === "Enter" && input.trim()) {
-                                // TODO: Send Message
+                                sendMessage({ text: input });
                                 inputRef.current?.focus();
+
                             }
                         }} value={input} onChange={(e) => setInput(e.target.value)} type="text" className="w-full bg-black border border-zinc-800 focus:border-zinc-700 focus:outline-none transitions-colors text-zinc-100 placeholder:text-zinc-700 py-3 pl-8 pr-4 text-sm" />
                     </div>
-                    <button className="bg-zinc-800 text-zinc-400 px-6 text-sm font-bold hover:text-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer uppercase">SEND</button>
+                    <button onClick={() => {
+                        sendMessage({ text: input })
+                        inputRef.current?.focus()
+                    }
+                    } disabled={!input.trim() || isPending} className="bg-zinc-800 text-zinc-400 px-6 text-sm font-bold hover:text-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer uppercase">SEND</button>
                 </div>
             </div>
         </main>
