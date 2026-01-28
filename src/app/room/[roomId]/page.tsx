@@ -7,7 +7,9 @@ import { client } from "@/lib/client";
 import { useUsername } from "@/app/hooks/use-username";
 import { format } from "date-fns";
 import { useRealtime } from "@/lib/realtime-client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import { nanoid } from "nanoid";
+
 function formatTimeRemaining(seconds: number) {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
@@ -17,9 +19,60 @@ function formatTimeRemaining(seconds: number) {
 function Page() {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const username = useUsername();
     const roomId = (params as any).roomId as string;
     const [input, setInput] = useState("");
+    const [isConnecting, setIsConnecting] = useState(true);
+
+    // Handle room connection on component mount
+    useEffect(() => {
+        const connectToRoom = async () => {
+            try {
+                const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
+                
+                if (!token) {
+                    // Create new token and join room
+                    const newToken = nanoid();
+                    document.cookie = `x-auth-token=${newToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
+                    
+                    // Add token to room's connected users
+                    const response = await fetch(`/api/rooms/join?roomId=${roomId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Cookie': `x-auth-token=${newToken}`
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        const error = await response.json();
+                        if (response.status === 403) {
+                            router.push('/?error=room-full');
+                        } else if (response.status === 404) {
+                            router.push('/?error=room_not_found');
+                        }
+                        return;
+                    }
+                }
+                setIsConnecting(false);
+            } catch (error) {
+                console.error('Connection error:', error);
+                router.push('/?error=room_not_found');
+            }
+        };
+
+        connectToRoom();
+    }, [roomId, router]);
+
+    if (isConnecting) {
+        return (
+            <main className="flex min-h-screen flex-col items-center justify-center p-4">
+                <div className="text-zinc-500">Connecting to room...</div>
+            </main>
+        );
+    }
+
     const { mutate: sendMessage, isPending } = useMutation({
         mutationFn: async ({ text }: { text: string }) => {
             await client.messages.post({ sender: username, text }, { query: { roomId } })

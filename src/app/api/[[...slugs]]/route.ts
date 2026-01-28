@@ -75,6 +75,39 @@ export const app = new Elysia({ prefix: '/api' })
         await redis.expire(`meta:${roomId}`, ROOM_TTL_SECONDS);
         return { roomId }
     })
+    .post('/rooms/join', async ({ query, cookie }) => {
+        const roomId = query.roomId as string;
+        const token = cookie['x-auth-token']?.value;
+        
+        if (!roomId || !token) {
+            throw new Error('Missing roomId or token');
+        }
+        
+        const meta = await redis.hgetall(`meta:${roomId}`);
+        if (!meta) {
+            throw new Error('Room not found');
+        }
+        
+        const connectedUsers = meta.connected ? (Array.isArray(meta.connected) ? meta.connected : [meta.connected]) : [];
+        
+        if (connectedUsers.includes(token)) {
+            return { success: true };
+        }
+        
+        if (connectedUsers.length >= 2) {
+            throw new Error('Room is full');
+        }
+        
+        await redis.hset(`meta:${roomId}`, {
+            connected: [...connectedUsers, token]
+        });
+        
+        return { success: true };
+    }, {
+        query: t.Object({
+            roomId: t.String()
+        })
+    })
     .use(authMiddleware)
     .get('/ttl', async ({ auth }) => {
         const ttl = await redis.ttl(`meta:${auth.roomId}`)
