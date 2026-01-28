@@ -79,6 +79,8 @@ export const app = new Elysia({ prefix: '/api' })
         const roomId = query.roomId as string;
         const token = cookie['x-auth-token']?.value;
         
+        console.log('Join attempt - RoomID:', roomId, 'Token:', token, 'User-Agent:', cookie['user-agent']);
+        
         if (!roomId || !token) {
             throw new Error('Missing roomId or token');
         }
@@ -89,12 +91,15 @@ export const app = new Elysia({ prefix: '/api' })
         }
         
         const connectedUsers = meta.connected ? (Array.isArray(meta.connected) ? meta.connected : [meta.connected]) : [];
+        console.log('Current connected users:', connectedUsers);
         
         if (connectedUsers.includes(token)) {
+            console.log('User already connected');
             return { success: true };
         }
         
         if (connectedUsers.length >= 2) {
+            console.log('Room full, rejecting');
             throw new Error('Room is full');
         }
         
@@ -102,6 +107,7 @@ export const app = new Elysia({ prefix: '/api' })
             connected: [...connectedUsers, token]
         });
         
+        console.log('User added, new connected users:', [...connectedUsers, token]);
         return { success: true };
     }, {
         query: t.Object({

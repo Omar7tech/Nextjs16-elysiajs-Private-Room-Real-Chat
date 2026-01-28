@@ -24,6 +24,19 @@ function HomeContent() {
       setBtnDisabled(true);
       const res = await client.rooms.create.post();
       if (res.status === 200) {
+        // Create token for room creator and add them immediately
+        const token = nanoid();
+        document.cookie = `x-auth-token=${token}; path=/; max-age=${60 * 60 * 24 * 7}`;
+        
+        // Add creator to room immediately
+        await fetch(`/api/rooms/join?roomId=${res.data?.roomId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cookie': `x-auth-token=${token}`
+          }
+        });
+        
         router.push(`/room/${res.data?.roomId}`)
       }
       setIsLoading(false);

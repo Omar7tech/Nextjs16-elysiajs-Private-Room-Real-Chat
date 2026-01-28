@@ -80,10 +80,13 @@ function Page() {
 
     // Join room function
     const joinRoom = async () => {
+        console.log('Join room function called');
         setIsJoining(true);
         try {
             const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
             const newToken = token || nanoid();
+            
+            console.log('Token exists:', !!token, 'New token:', newToken);
             
             if (!token) {
                 document.cookie = `x-auth-token=${newToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
@@ -96,6 +99,8 @@ function Page() {
                     'Cookie': `x-auth-token=${newToken}`
                 }
             });
+
+            console.log('Join response status:', response.status);
 
             if (!response.ok) {
                 const error = await response.json();
@@ -115,6 +120,34 @@ function Page() {
             setIsJoining(false);
         }
     };
+
+    // Check if user is already joined on component mount
+    useEffect(() => {
+        const checkIfAlreadyJoined = async () => {
+            const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
+            
+            if (token) {
+                try {
+                    const response = await fetch(`/api/rooms/join?roomId=${roomId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Cookie': `x-auth-token=${token}`
+                        }
+                    });
+
+                    if (response.ok) {
+                        // User is already joined or successfully joined
+                        setHasJoined(true);
+                    }
+                } catch (error) {
+                    console.error('Error checking join status:', error);
+                }
+            }
+        };
+
+        checkIfAlreadyJoined();
+    }, [roomId]);
 
     useEffect(() => {
         if (ttlData?.ttl !== undefined) {
