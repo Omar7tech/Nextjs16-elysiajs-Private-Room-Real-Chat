@@ -50,6 +50,7 @@ const TextType = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [currentTextIndex, setCurrentTextIndex] = useState(0);
   const [isVisible, setIsVisible] = useState(!startOnVisible);
+  const [shouldStartAnimation, setShouldStartAnimation] = useState(false);
   const cursorRef = useRef<HTMLSpanElement>(null);
   const containerRef = useRef<HTMLElement>(null);
 
@@ -102,6 +103,14 @@ const TextType = ({
 
     let timeout: ReturnType<typeof setTimeout>;
 
+    // Start animation after initial delay
+    if (!shouldStartAnimation) {
+      timeout = setTimeout(() => {
+        setShouldStartAnimation(true);
+      }, initialDelay);
+      return () => clearTimeout(timeout);
+    }
+
     const currentText = textArray[currentTextIndex];
     const processedText = reverseMode ? currentText.split('').reverse().join('') : currentText;
 
@@ -143,14 +152,11 @@ const TextType = ({
       }
     };
 
-    if (currentCharIndex === 0 && !isDeleting && displayedText === '') {
-      timeout = setTimeout(executeTypingAnimation, initialDelay);
-    } else {
-      executeTypingAnimation();
-    }
+    executeTypingAnimation();
 
     return () => clearTimeout(timeout);
   }, [
+    shouldStartAnimation,
     currentCharIndex,
     displayedText,
     isDeleting,
@@ -178,9 +184,9 @@ const TextType = ({
       ...props
     },
     <span className="inline" style={{ color: getCurrentTextColor() || 'inherit' }}>
-      {displayedText}
+      {shouldStartAnimation ? displayedText : ''}
     </span>,
-    showCursor && (
+    showCursor && shouldStartAnimation && (
       <span
         ref={cursorRef}
         className={`ml-1 inline-block opacity-100 ${shouldHideCursor ? 'hidden' : ''} ${cursorClassName}`}

@@ -44,58 +44,169 @@ function HomeContent() {
     }
   })
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-4">
-      <div className="w-full max-w-md space-y-8">
+    <main className="min-h-screen bg-black text-green-400 font-mono p-4 overflow-hidden">
+      <div className="max-w-4xl mx-auto">
+        {/* Terminal Header */}
+        <div className="border border-green-900/30 bg-black/50 p-3 mb-6">
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-green-500">root@secure-chat:~$</span>
+            <span className="text-zinc-500">./init --mode=ephemeral</span>
+          </div>
+        </div>
 
+        {/* Alert Messages */}
         {wasDestroyed && 
-        <div className="bg-red-950/50 p-6">
-          <p className="uppercase text-red-500 text-sm font-bold">Room Destroyed</p>
-          <p className="text-zinc-500 text-xs">All messages were permanently deleted.</p>
+        <div className="border border-red-900/50 bg-red-950/20 p-3 mb-4">
+          <div className="flex items-start gap-2">
+            <span className="text-red-500">[ERROR]</span>
+            <div>
+              <p className="text-red-400 text-sm">SESSION_TERMINATED</p>
+              <p className="text-red-600 text-xs mt-1">All data packets have been purged from memory</p>
+            </div>
+          </div>
         </div>
         }
         {error === 'room_not_found' && 
-        <div className="bg-red-950/50 p-6">
-          <p className="uppercase text-red-500 text-sm font-bold">Room Not Found</p>
-          <p className="text-zinc-500 text-xs">This room may have been deleted or does not exist.</p>
+        <div className="border border-red-900/50 bg-red-950/20 p-3 mb-4">
+          <div className="flex items-start gap-2">
+            <span className="text-red-500">[404]</span>
+            <div>
+              <p className="text-red-400 text-sm">NODE_NOT_FOUND</p>
+              <p className="text-red-600 text-xs mt-1">Target session does not exist in network</p>
+            </div>
+          </div>
         </div>
         }
-        {error === 'room-full' && 
-        <div className="bg-red-950/50 p-6">
-          <p className="uppercase text-red-500 text-sm font-bold">Room Full</p>
-          <p className="text-zinc-500 text-xs">This room is full and cannot accept any more participants.</p>
+        {error === 'room_full' && 
+        <div className="border border-red-900/50 bg-red-950/20 p-3 mb-4">
+          <div className="flex items-start gap-2">
+            <span className="text-red-500">[503]</span>
+            <div>
+              <p className="text-red-400 text-sm">CONNECTION_LIMIT_REACHED</p>
+              <p className="text-red-600 text-xs mt-1">Maximum node capacity (2) exceeded</p>
+            </div>
+          </div>
         </div>
         }
-        <div className="text-center space-y-2">
-          <h1 className="text-2xl font-bold tracking-tight text-green-500">{">"}
-            <TextType
-              text={["private_chat", "self-destructing_chat"]}
-              typingSpeed={75}
-              pauseDuration={5000}
-              showCursor={true}
-              cursorCharacter="|"
-            /></h1>
-          <p className="text-zinc-500 text-sm">A private , self-distructing chat room.</p>
-        </div>
+        
+        {/* Main Terminal */}
+        <div className="border border-green-900/30 bg-black/80 backdrop-blur-sm">
+          <div className="border-b border-green-900/30 p-3">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+              <span className="text-xs text-green-500">SECURE_TERMINAL_v2.0.1</span>
+            </div>
+          </div>
+          
+          <div className="p-6 space-y-6">
+            {/* ASCII Art Title */}
+            <div className="text-center space-y-2">
+              <pre className="text-green-400 text-xs leading-tight">
+{`
 
-        <div className="border-zinc-800 bg-zinc-90 0/50 p-6 backdrop-blur-md">
-          <div className="space-y-5">
-            <div className="space-y-2">
-              <label className="flex items-center text-zinc-500">Your Identity</label>
-              <div className="flex items-center gap-3">
-                <div className="flex-1 bg-zinc-950 border border-zinc-800 text-sm text-zinc-400 font-mono p-2">
-                  {username}
+ ________  ________  ________   ______   __    __ 
+/        |/        |/        | /      \ /  |  /  |
+$$$$$$$$/ $$$$$$$$/ $$$$$$$$/ /$$$$$$  |$$ |  $$ |
+    /$$/     $$ |   $$ |__    $$ |  $$/ $$ |__$$ |
+   /$$/      $$ |   $$    |   $$ |      $$    $$ |
+  /$$/       $$ |   $$$$$/    $$ |   __ $$$$$$$$ |
+ /$$/        $$ |   $$ |_____ $$ \__/  |$$ |  $$ |
+/$$/         $$ |   $$       |$$    $$/ $$ |  $$ |
+$$/          $$/    $$$$$$$$/  $$$$$$/  $$/   $$/ 
+                                                  
+                                                  
+                                                  
+`}
+              </pre>
+              <div className="space-y-1">
+                <h1 className="text-lg">
+                  <span className="text-green-500">{">"}</span>
+                  <TextType
+                    text={["INIT_SECURE_CHANNEL", "EPHEMERAL_LINK"]}
+                    typingSpeed={60}
+                    pauseDuration={4000}
+                    showCursor={true}
+                    cursorCharacter="_"
+                  />
+                </h1>
+                <p className="text-zinc-500 text-xs">[END-TO-END_ENCRYPTED] [AUTO-DESTRUCT: 600s]</p>
+              </div>
+            </div>
+
+            {/* System Info */}
+            <div className="border border-green-900/20 bg-black/50 p-4">
+              <div className="text-xs space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">[SYSTEM_STATUS]</span>
+                  <span className="text-green-400">ONLINE</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">[ENCRYPTION]</span>
+                  <span className="text-green-400">AES-256-GCM</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">[MAX_NODES]</span>
+                  <span className="text-green-400">2</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-500">[TTL]</span>
+                  <span className="text-green-400">600s</span>
                 </div>
               </div>
-
             </div>
-            <button type="button" onClick={() => createRoom()} disabled={btnDisabled} className="gap-3 flex justify-center items-center w-full bg-zinc-100 text-zinc-950 p-3  text-sm font-bold hover:bg-zinc-50 hover:text-black transition-colors mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
-              {isLoading && (
-                <Spinner />
-              )}
-              <span>
-                Create Secure Room
-              </span>
-            </button>
+
+            {/* Identity Section */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-green-500">$</span>
+                <span>whoami</span>
+              </div>
+              <div className="bg-black border border-green-900/20 p-3">
+                <div className="text-xs text-green-400">
+                  <span className="text-zinc-500">user@</span>
+                  <span className="text-green-300">{username}</span>
+                  <span className="text-zinc-500"> [ANONYMOUS_NODE]</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Create Room Command */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-green-500">$</span>
+                <span>./create_session --encrypt=true --ttl=600</span>
+              </div>
+              <button 
+                type="button" 
+                onClick={() => createRoom()} 
+                disabled={btnDisabled} 
+                className="w-full bg-black border border-green-900/30 text-green-400 p-3 text-sm font-mono hover:bg-green-950/20 hover:border-green-700/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isLoading ? (
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                    <span>INITIALIZING_SECURE_CHANNEL...</span>
+                  </div>
+                ) : (
+                  <span>[EXECUTE]</span>
+                )}
+              </button>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-green-900/20 pt-4">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-zinc-600">[CIPHER_SUITE: TLS_1.3]</span>
+                <a 
+                  href="https://github.com/Omar7tech" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-zinc-600 hover:text-green-400 transition-colors"
+                >
+                  dev@Omar7Tech
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </div>

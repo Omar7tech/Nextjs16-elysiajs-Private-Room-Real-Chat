@@ -1,14 +1,16 @@
 'use client'
 
 import { useParams } from "next/navigation"
-import { useEffect, useRef, useState } from "react"
-import { useMutation, useQuery} from "@tanstack/react-query"
+import { useEffect, useRef, useState, useCallback } from "react"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { client } from "@/lib/client";
 import { useUsername } from "@/app/hooks/use-username";
 import { format } from "date-fns";
 import { useRealtime } from "@/lib/realtime-client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { nanoid } from "nanoid";
+import { encryptMessage, decryptMessage, generateRoomKey } from "@/lib/encryption";
+import TextType from "@/components/TextType";
 
 function formatTimeRemaining(seconds: number) {
     const minutes = Math.floor(seconds / 60);
@@ -26,8 +28,33 @@ function Page() {
     const [hasJoined, setHasJoined] = useState(false);
     const [isJoining, setIsJoining] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
     const [copied, setCopied] = useState(false);
     const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+    const [typingMessages, setTypingMessages] = useState<Set<string>>(new Set());
+
+    // Audio system for beep sounds
+    const playBeep = useCallback((frequency: number = 800, duration: number = 100) => {
+        try {
+            const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.frequency.value = frequency;
+            oscillator.type = 'square';
+
+            gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration / 1000);
+
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + duration / 1000);
+        } catch (error) {
+            // Silently fail if audio is not supported
+        }
+    }, []);
 
     // All hooks must be called before any conditional returns
     const { mutate: sendMessage, isPending } = useMutation({
@@ -35,6 +62,7 @@ function Page() {
             await client.messages.post({ sender: username, text }, { query: { roomId } })
         },
         onSuccess: () => {
+            playBeep(1000, 80); // Higher pitch beep for sent message
             setInput("")
         }
     });
@@ -70,13 +98,48 @@ function Page() {
         events: ['chat.message', 'chat.destroy'],
         onData: ({ event }) => {
             if (event === 'chat.message') {
-                refetch()
+                playBeep(600, 120); // Lower pitch beep for received message
+                refetch().then(() => {
+                    // Get the updated messages after refetch completes
+                    setTimeout(() => {
+                        // Trigger a fresh refetch to get the latest data
+                        refetch().then((result) => {
+                            if (result.data?.messages) {
+                                const latestMessage = result.data.messages[result.data.messages.length - 1];
+                                if (latestMessage && !typingMessages.has(latestMessage.id) && latestMessage.sender !== username) {
+                                    setTypingMessages(prev => new Set(prev).add(latestMessage.id));
+
+                                    // Remove from typing after animation completes
+                                    setTimeout(() => {
+                                        setTypingMessages(prev => {
+                                            const newSet = new Set(prev);
+                                            newSet.delete(latestMessage.id);
+                                            return newSet;
+                                        });
+                                    }, latestMessage.text.length * 30 + 500); // 30ms per character + 500ms buffer
+                                }
+                            }
+                        });
+                    }, 100);
+                });
+
+                // Auto scroll to bottom when new message arrives
+                setTimeout(() => {
+                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                }, 100);
             }
             if (event === 'chat.destroy') {
                 router.push('/?destroyed=true');
             }
         }
     });
+
+    // Auto scroll to bottom when messages change
+    useEffect(() => {
+        if (messages?.messages && messages.messages.length > 0) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, [messages?.messages?.length]);
 
     // Join room function
     const joinRoom = async () => {
@@ -85,9 +148,9 @@ function Page() {
         try {
             const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
             const newToken = token || nanoid();
-            
+
             console.log('Token exists:', !!token, 'New token:', newToken);
-            
+
             if (!token) {
                 document.cookie = `x-auth-token=${newToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
             }
@@ -125,7 +188,7 @@ function Page() {
     useEffect(() => {
         const checkIfAlreadyJoined = async () => {
             const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
-            
+
             if (token) {
                 try {
                     const response = await fetch(`/api/rooms/join?roomId=${roomId}`, {
@@ -188,31 +251,108 @@ function Page() {
     // Show join room screen if not joined
     if (!hasJoined) {
         return (
-            <main className="flex min-h-screen flex-col items-center justify-center p-4">
-                <div className="w-full max-w-md space-y-8">
-                    <div className="text-center space-y-2">
-                        <h1 className="text-2xl font-bold tracking-tight text-green-500">{">"} Private Chat Room</h1>
-                        <p className="text-zinc-500 text-sm">Room ID: <span className="font-mono text-green-400">{roomId}</span></p>
-                        <p className="text-zinc-600 text-xs">This room will self-destruct in 10 minutes</p>
+            <main className="min-h-screen bg-black text-green-400 font-mono p-4">
+                <div className="max-w-4xl mx-auto">
+                    {/* Terminal Header */}
+                    <div className="border border-green-900/30 bg-black/50 p-3 mb-6">
+                        <div className="flex items-center gap-2 text-xs">
+                            <span className="text-green-500">root@secure-chat:~$</span>
+                            <span className="text-zinc-500">./access --node={roomId}</span>
+                        </div>
                     </div>
 
-                    <div className="border-zinc-800 bg-zinc-900/50 p-6 backdrop-blur-md">
-                        <div className="space-y-5">
-                            <div className="space-y-2">
-                                <label className="flex items-center text-zinc-500">Your Identity</label>
-                                <div className="flex items-center gap-3">
-                                    <div className="flex-1 bg-zinc-950 border border-zinc-800 text-sm text-zinc-400 font-mono p-2">
-                                        {username}
+                    {/* Access Terminal */}
+                    <div className="border border-green-900/30 bg-black/80 backdrop-blur-sm">
+                        <div className="border-b border-green-900/30 p-3">
+                            <div className="flex items-center gap-2">
+                                <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                                <span className="text-xs text-green-500">NODE_ACCESS_TERMINAL</span>
+                            </div>
+                        </div>
+
+                        <div className="p-6 space-y-6">
+                            <div className="space-y-4">
+                                <div className="text-center space-y-2">
+                                    <pre className="text-green-400 text-xs leading-tight">
+                                        {`
+
+ ________  ________  ________   ______   __    __ 
+/        |/        |/        | /      \ /  |  /  |
+$$$$$$$$/ $$$$$$$$/ $$$$$$$$/ /$$$$$$  |$$ |  $$ |
+    /$$/     $$ |   $$ |__    $$ |  $$/ $$ |__$$ |
+   /$$/      $$ |   $$    |   $$ |      $$    $$ |
+  /$$/       $$ |   $$$$$/    $$ |   __ $$$$$$$$ |
+ /$$/        $$ |   $$ |_____ $$ \__/  |$$ |  $$ |
+/$$/         $$ |   $$       |$$    $$/ $$ |  $$ |
+$$/          $$/    $$$$$$$$/  $$$$$$/  $$/   $$/ 
+                                                  
+                                                  
+                                                  
+                                                  `}
+                                    </pre>
+                                    <h1 className="text-lg text-green-400">
+                                        <span className="text-green-500">{">"}</span>
+                                        NODE_ACCESS_REQUEST
+                                    </h1>
+                                    <p className="text-zinc-500 text-xs">TARGET: {roomId}</p>
+                                </div>
+
+                                <div className="border border-green-900/20 bg-black/50 p-4">
+                                    <div className="text-xs space-y-2">
+                                        <div className="flex justify-between">
+                                            <span className="text-zinc-500">[NODE_ID]</span>
+                                            <span className="text-green-400">{roomId}</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-zinc-500">[STATUS]</span>
+                                            <span className="text-yellow-400">AWAITING_AUTH</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-zinc-500">[TTL]</span>
+                                            <span className="text-green-400">600s</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-zinc-500">[MAX_NODES]</span>
+                                            <span className="text-green-400">2/2</span>
+                                        </div>
                                     </div>
                                 </div>
+
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <span className="text-green-500">$</span>
+                                        <span>whoami</span>
+                                    </div>
+                                    <div className="bg-black border border-green-900/20 p-3">
+                                        <div className="text-xs text-green-400">
+                                            <span className="text-zinc-500">user@</span>
+                                            <span className="text-green-300">{username}</span>
+                                            <span className="text-zinc-500"> [ANONYMOUS_NODE]</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <div className="flex items-center gap-2 text-xs">
+                                        <span className="text-green-500">$</span>
+                                        <span>./connect --node={roomId} --auth=token</span>
+                                    </div>
+                                    <button
+                                        onClick={joinRoom}
+                                        disabled={isJoining}
+                                        className="w-full bg-black border border-green-900/30 text-green-400 p-3 text-sm font-mono hover:bg-green-950/20 hover:border-green-700/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {isJoining ? (
+                                            <div className="flex items-center justify-center gap-2">
+                                                <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+                                                <span>ESTABLISHING_SECURE_CONNECTION...</span>
+                                            </div>
+                                        ) : (
+                                            <span>[CONNECT_TO_NODE]</span>
+                                        )}
+                                    </button>
+                                </div>
                             </div>
-                            <button 
-                                onClick={joinRoom}
-                                disabled={isJoining}
-                                className="gap-3 flex justify-center items-center w-full bg-zinc-100 text-zinc-950 p-3 text-sm font-bold hover:bg-zinc-50 hover:text-black transition-colors mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isJoining ? 'Joining...' : 'Join Room'}
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -221,66 +361,107 @@ function Page() {
     }
 
     return (
-        <main className="flex flex-col h-screen max-h-screen overflow-hidden">
-            <header className="border-b border-zinc-800 p-4 flex items-center justify-between bg-zinc-900/30">
-                <div className="flex items-center gap-4">
-                    <div className="flex flex-col">
-                        <span className="text-xs text-zinc-500 uppercase">Room Id</span>
-                        <div className="flex items-center gap-2">
-                            <span className="font-bold text-green-500 ">{roomId}</span>
-                            <button onClick={copyLink} className="text-[10px] bg-zinc-800 hover:bg-zinc-700 px-2 py-0.5 rounded text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer uppercase">{copied ? 'Copied!' : 'Copy'}</button>
-                        </div>
+        <main className="h-screen bg-black text-green-400 font-mono flex flex-col overflow-hidden">
+            {/* Terminal Header */}
+            <div className="border border-green-900/30 bg-black/50 p-2 sm:p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-6">
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                        <span className="text-green-500 text-xs sm:text-sm truncate">root@secure-chat:~$ ./session --node={roomId}</span>
                     </div>
-                    <div className="h-8 w-px bg-zinc-800" />
-                    <div className="flex flex-col gap-2">
-                        <span className="text-xs text-zinc-500 uppercase">Self-Destruct <span className={`text-sm font-bold flex items-center gap-2 ${timeRemaining !== null && timeRemaining < 60 ? 'text-red-500' : 'text-amber-500'}`}>{timeRemaining !== null ? formatTimeRemaining(timeRemaining) : '--:--'}</span></span>
+                    <div className="flex items-center justify-between gap-2 sm:gap-4">
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <span className="text-zinc-500 text-xs sm:text-sm">[TTL]</span>
+                            <span className={`text-xs sm:text-sm font-mono ${timeRemaining !== null && timeRemaining < 60 ? 'text-red-400' : 'text-yellow-400'}`}>
+                                {timeRemaining !== null ? formatTimeRemaining(timeRemaining) : '--:--'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2 sm:gap-3">
+                            <button
+                                onClick={copyLink}
+                                className="text-xs text-zinc-500 hover:text-green-400 transition-colors border border-green-900/30 px-2 py-1 sm:px-3 sm:py-1 rounded whitespace-nowrap"
+                            >
+                                {copied ? 'COPIED' : 'COPY'}
+                            </button>
+                            <button
+                                onClick={() => destroyRoom()}
+                                className="text-xs text-zinc-500 hover:text-red-400 transition-colors border border-red-900/30 px-2 py-1 sm:px-3 sm:py-1 rounded whitespace-nowrap"
+                            >
+                                PURGE
+                            </button>
+                        </div>
                     </div>
                 </div>
-                <button onClick={() => {
-                    destroyRoom()
-                }} className="text-xs bg-zinc-800 hover:bg-red-600 px-3  py-1.5 rounded text-zinc-400 hover:text-white  font-bold transition-all group flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-zinc-500 cursor-pointer"><span className="group-hover:animate-pulse">💣</span>Destroy Now</button>
-            </header>
-            {/* MESSAGES */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4  scrollbar-thin">
-                {messages?.messages.length === 0 && (
-                    <div className="flex items-center justify-center h-full">
-                        <p className="text-zinc-600 text-sm font-mono">No messages yet , start the conversation</p>
-                    </div>
-                )}
-                {messages?.messages.map((msg) => (
-                    <div key={msg.id} className="flex flex-col items-start">
-
-                        <div className="max-w-[80%] group">
-                            <div className="flex items-baseline gap-3 mb-1">
-                                <span className={`text-xs font-bold ${msg.sender === username ? 'text-green-500' : 'text-blue-500'}`}>{msg.sender === username ? 'YOU' : msg.sender}</span>
-                                <span className="text-[10px] text-zinc-600">{format(msg.timestamp , "HH:mm") }</span>
-                            </div>
-                            <p className="text-sm text-zinc-300 leading-relaxed break-all">{msg.text}</p>
-                        </div>
-                    </div>
-                ))}
             </div>
-            <div className="p-4  border-t border-zinc-800 bg-zinc-900/30">
-                <div className="flex gap-4">
-                    <div className="flex-1 relative group">
-                        <span className="absolute left-4  top-1/2 -translate-y-1/2 text-zinc-500 group-focus-within:animate-pulse group-focus-within:text-green-500">{">"}</span>
-                        <input placeholder='Type your message...' onKeyDown={(e) => {
-                            if (e.key === "Enter" && input.trim()) {
+
+            {/* Messages Terminal */}
+            <div className="flex-1 border border-green-900/30 bg-black/80 backdrop-blur-sm flex flex-col min-h-0">
+                <div className="border-b border-green-900/30 p-2">
+                    <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                        <span className="text-xs text-green-500">ENCRYPTED_CHANNEL_v2.0.1</span>
+                        <span className="text-zinc-600 text-xs">[AES-256-GCM]</span>
+                    </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-1 scrollbar-thin font-mono text-xs sm:text-sm min-h-0">
+                    {messages?.messages.length === 0 && (
+                        <div className="text-center py-8">
+                            <p className="text-zinc-600 animate-pulse">[CHANNEL_ACTIVE] Awaiting transmission...</p>
+                        </div>
+                    )}
+                    {messages?.messages.map((msg) => (
+                        <div
+                            key={msg.id}
+                            className={`
+                                ${typingMessages.has(msg.id) ? 'animate-pulse' : ''}
+                                transition-opacity duration-200
+                            `}
+                        >
+                            <span className="text-zinc-600">
+                                [{format(msg.timestamp, "HH:mm:ss")}]
+                            </span>
+                            <span className={`ml-2 ${msg.sender === username ? 'text-green-400' : 'text-blue-400'}`}>
+                                {msg.sender === username ? 'root' : msg.sender}:
+                            </span>
+                            <span className={`ml-2 ${msg.sender === username ? 'text-green-300' : 'text-blue-300'}`}>
+                                {msg.text}
+                            </span>
+                        </div>
+                    ))}
+                    <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input Terminal */}
+                <div className="border-t border-green-900/30 p-2 sm:p-3 shrink-0">
+                    <div className="flex items-center gap-2">
+                        <span className="text-green-400 text-xs sm:text-sm">$</span>
+                        <input
+                            ref={inputRef}
+                            placeholder=''
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" && input.trim()) {
+                                    sendMessage({ text: input });
+                                }
+                            }}
+                            value={input}
+                            onChange={(e) => setInput(e.target.value)}
+                            type="text"
+                            className="flex-1 bg-transparent border-none outline-none text-green-300 text-xs sm:text-sm placeholder:text-zinc-700"
+                        />
+                        <button
+                            onClick={() => {
                                 sendMessage({ text: input });
                                 inputRef.current?.focus();
-
-                            }
-                        }} value={input} onChange={(e) => setInput(e.target.value)} type="text" className="w-full bg-black border border-zinc-800 focus:border-zinc-700 focus:outline-none transitions-colors text-zinc-100 placeholder:text-zinc-700 py-3 pl-8 pr-4 text-sm" />
+                            }}
+                            disabled={!input.trim() || isPending}
+                            className="text-xs text-zinc-500 hover:text-green-400 transition-colors disabled:opacity-50"
+                        >
+                            [{isPending ? '...' : 'SEND'}]
+                        </button>
                     </div>
-                    <button onClick={() => {
-                        sendMessage({ text: input })
-                        inputRef.current?.focus()
-                    }
-                    } disabled={!input.trim() || isPending} className="bg-zinc-800 text-zinc-400 px-6 text-sm font-bold hover:text-zinc-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer uppercase">SEND</button>
                 </div>
             </div>
         </main>
     )
 }
-
 export default Page
