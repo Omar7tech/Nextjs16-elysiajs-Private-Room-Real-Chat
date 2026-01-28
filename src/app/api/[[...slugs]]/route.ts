@@ -114,15 +114,20 @@ export const app = new Elysia({ prefix: '/api' })
             roomId: t.String()
         })
     })
-    .use(authMiddleware)
-    .get('/ttl', async ({ auth }) => {
-        const ttl = await redis.ttl(`meta:${auth.roomId}`)
+    .get('/ttl', async ({ query }) => {
+        const roomId = query.roomId as string;
+        if (!roomId) {
+            throw new Error('Missing roomId');
+        }
+        
+        const ttl = await redis.ttl(`meta:${roomId}`)
         return { ttl: ttl > 0 ? ttl : 0 }
     }, {
-        query: z.object({
-            roomId: z.string()
+        query: t.Object({
+            roomId: t.String()
         })
     })
+    .use(authMiddleware)
     .delete("/", async ({ auth }) => {
         await realtime.channel(auth.roomId).emit("chat.destroy", { isDestroyed: true })
         await Promise.all([
