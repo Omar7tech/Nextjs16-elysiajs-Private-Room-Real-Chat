@@ -4,39 +4,34 @@ import { nanoid } from "nanoid";
 
 function isBot(req: NextRequest): boolean {
     const userAgent = req.headers.get('user-agent') || '';
+    
+    // Block ANY request that has no user-agent or contains bot-like patterns
+    if (!userAgent || userAgent.length < 10) {
+        return true;
+    }
+    
     const botPatterns = [
-        'whatsapp',
-        'facebookexternalhit',
-        'twitterbot',
-        'linkedinbot',
-        'telegrambot',
-        'slackbot',
-        'discordbot',
-        'googlebot',
-        'bingbot',
-        'slurp',
-        'duckduckbot',
-        'baiduspider',
-        'yandexbot',
-        'crawler',
-        'spider',
-        'bot'
+        'whatsapp', 'facebook', 'twitter', 'linkedin', 'telegram', 'slack', 'discord',
+        'googlebot', 'bingbot', 'slurp', 'duckduckbot', 'baiduspider', 'yandexbot',
+        'crawler', 'spider', 'bot', 'curl', 'wget', 'python', 'java', 'node', 'fetch',
+        'axios', 'http', 'requests', 'scrapy', 'selenium', 'puppeteer', 'playwright',
+        'chrome', 'firefox', 'safari', 'edge' // Block browser headless modes
     ];
     
-    return botPatterns.some(pattern => 
-        userAgent.toLowerCase().includes(pattern.toLowerCase())
-    );
+    const userAgentLower = userAgent.toLowerCase();
+    return botPatterns.some(pattern => userAgentLower.includes(pattern));
 }
 
 export async function middleware(req: NextRequest) {
     const pathName = req.nextUrl.pathname
-    const roomMatch = pathName.match(/^\/room\/([^/]+)$/)
-    if(!roomMatch) {
-        return NextResponse.next()
+    
+    // Block ALL bots from accessing ANY route
+    if (isBot(req)) {
+        return new Response('Access denied', { status: 403 })
     }
     
-    // Skip connection logic for bots - just let them see the page for metadata
-    if (isBot(req)) {
+    const roomMatch = pathName.match(/^\/room\/([^/]+)$/)
+    if(!roomMatch) {
         return NextResponse.next()
     }
     
@@ -45,16 +40,21 @@ export async function middleware(req: NextRequest) {
     if(!meta){
         return NextResponse.redirect(new URL('/?error=room_not_found', req.url))
     }
+    
     const existingToken = req.cookies.get('x-auth-token')?.value
     const connectedUsers = Array.isArray(meta.connected) ? meta.connected : []
+    
     if(existingToken && connectedUsers.includes(existingToken)) {
         return NextResponse.next()
     }
+    
     if(connectedUsers.length >= 2) {
         return NextResponse.redirect(new URL('/?error=room-full', req.url))
     }
+    
     const response = NextResponse.next()
     const token  = existingToken || nanoid();
+    
     response.cookies.set('x-auth-token', token, {
         httpOnly: true,
         sameSite: 'strict',
@@ -62,12 +62,14 @@ export async function middleware(req: NextRequest) {
         path: '/',
         maxAge: 60 * 60 * 24 * 7
     })
+    
     await redis.hset(`meta:${roomId}`, {
             connected: [...connectedUsers, token]
     })
+    
     return response
 }
 
 export const config = {
-    matcher: '/room/:path*'
+    matcher: ['/room/:path*', '/']
 }
