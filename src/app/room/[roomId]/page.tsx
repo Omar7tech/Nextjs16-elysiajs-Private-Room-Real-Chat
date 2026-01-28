@@ -24,31 +24,81 @@ function Page() {
     const roomId = (params as any).roomId as string;
     const [input, setInput] = useState("");
     const [isConnecting, setIsConnecting] = useState(true);
+    const inputRef = useRef<HTMLInputElement>(null);
+    const [copied, setCopied] = useState(false);
+    const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
 
-    // Bot detection and room connection on component mount
+    // All hooks must be called before any conditional returns
+    const { mutate: sendMessage, isPending } = useMutation({
+        mutationFn: async ({ text }: { text: string }) => {
+            await client.messages.post({ sender: username, text }, { query: { roomId } })
+        },
+        onSuccess: () => {
+            setInput("")
+        }
+    });
+
+    const { data: messages, refetch } = useQuery({
+        queryKey: ["messages", roomId],
+        queryFn: async () => {
+            const res = await client.messages.get({ query: { roomId } });
+            return res.data;
+        }
+    });
+
+    const { data: ttlData } = useQuery({
+        queryKey: ['ttl', roomId],
+        queryFn: async () => {
+            const res = await client.ttl.get({ query: { roomId } });
+            return res.data;
+        }
+    });
+
+    const { mutate: destroyRoom } = useMutation({
+        mutationFn: async () => {
+            await client.delete(null, { query: { roomId } })
+        }
+    });
+
+    useRealtime({
+        channels: [roomId],
+        events: ['chat.message', 'chat.destroy'],
+        onData: ({ event }) => {
+            if (event === 'chat.message') {
+                refetch()
+            }
+            if (event === 'chat.destroy') {
+                router.push('/?destroyed=true');
+            }
+        }
+    });
+
+    // Bot detection - runs before any other effects
+    useEffect(() => {
+        const userAgent = navigator.userAgent.toLowerCase();
+        const isBot = userAgent.includes('whatsapp') ||
+            userAgent.includes('bot') ||
+            userAgent.includes('crawler') ||
+            userAgent.includes('spider') ||
+            !userAgent || userAgent.length < 10;
+
+        if (isBot) {
+            router.push('/');
+            return;
+        }
+    }, [router]);
+
+    // Room connection on component mount
     useEffect(() => {
         const connectToRoom = async () => {
             try {
-                // Check for bots
-                const userAgent = navigator.userAgent.toLowerCase();
-                const isBot = userAgent.includes('whatsapp') || 
-                              userAgent.includes('bot') ||
-                              userAgent.includes('crawler') ||
-                              userAgent.includes('spider') ||
-                              !userAgent || userAgent.length < 10;
-                
-                if (isBot) {
-                    router.push('/');
-                    return;
-                }
-                
                 const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
-                
+
                 if (!token) {
                     // Create new token and join room
                     const newToken = nanoid();
                     document.cookie = `x-auth-token=${newToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
-                    
+
                     // Add token to room's connected users
                     const response = await fetch(`/api/rooms/join?roomId=${roomId}`, {
                         method: 'POST',
@@ -57,7 +107,7 @@ function Page() {
                             'Cookie': `x-auth-token=${newToken}`
                         }
                     });
-                    
+
                     if (!response.ok) {
                         const error = await response.json();
                         if (response.status === 403) {
@@ -78,38 +128,33 @@ function Page() {
         connectToRoom();
     }, [roomId, router]);
 
-    if (isConnecting) {
-        return (
-            <main className="flex min-h-screen flex-col items-center justify-center p-4">
-                <div className="text-zinc-500">Connecting to room...</div>
-            </main>
-        );
-    }
+    useEffect(() => {
+        if (ttlData?.ttl !== undefined) {
+            setTimeRemaining(ttlData?.ttl)
+        }
+    }, [ttlData?.ttl]);
 
-    const { mutate: sendMessage, isPending } = useMutation({
-        mutationFn: async ({ text }: { text: string }) => {
-            await client.messages.post({ sender: username, text }, { query: { roomId } })
+    useEffect(() => {
+        if (timeRemaining === null || timeRemaining < 0) {
+            return;
         }
-        ,
-        onSuccess: () => {
-            setInput("")
+        if (timeRemaining === 0) {
+            router.push('/?destroyed=true');
+            return;
         }
-    })
+        const interval = setInterval(() => {
+            setTimeRemaining((prev) => {
+                if (prev === null || prev <= 1) {
+                    clearInterval(interval);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [timeRemaining, router]);
 
-    useRealtime({
-        channels: [roomId],
-        events: ['chat.message' , 'chat.destroy'] , 
-        onData: ({event}) => {
-            if( event === 'chat.message') {
-                refetch()
-            }
-            if(event === 'chat.destroy') {
-                router.push('/?destroyed=true');
-            }
-        }
-    })
-    const inputRef = useRef<HTMLInputElement>(null);
-    const [copied, setCopied] = useState(false);
+    // Copy link function
     const copyLink = () => {
         const url = window.location.href;
         navigator.clipboard.writeText(url);
@@ -117,55 +162,15 @@ function Page() {
         setTimeout(() => {
             setCopied(false);
         }, 2000);
+    };
+
+    if (isConnecting) {
+        return (
+            <main className="flex min-h-screen flex-col items-center justify-center p-4">
+                <div className="text-zinc-500">Connecting to room...</div>
+            </main>
+        );
     }
-    const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-    const {data : ttlData} = useQuery({
-        queryKey: ['ttl' , roomId],
-        queryFn: async () => {
-            const res = await client.ttl.get({ query: { roomId } });
-            return res.data;
-        }
-    })
-
-    useEffect(() => {
-        if(ttlData?.ttl !== undefined){
-         setTimeRemaining(ttlData?.ttl)   
-        }
-    } , [ttlData?.ttl])
-
-    useEffect( () => {
-        if(timeRemaining === null || timeRemaining < 0) {
-            return;
-        }
-        if(timeRemaining === 0){
-            router.push('/?destroyed=true');
-            return;
-        }
-        const interval = setInterval(() => {
-            setTimeRemaining((prev) => {
-                if(prev === null || prev <= 1) {
-                    clearInterval(interval);
-                    return 0;
-                } 
-                return prev - 1; 
-            });
-        }, 1000);
-        return () => clearInterval(interval);
-    } , [timeRemaining , router])
-    const { data: messages , refetch } = useQuery({
-        queryKey: ["messages", roomId],
-        queryFn: async () => {
-            const res = await client.messages.get({ query: { roomId } });
-            return res.data;
-        }
-    });
-
-    const {mutate: destroyRoom} = useMutation({
-        mutationFn: async () => {
-            await client.delete(null , { query: { roomId } })
-        }
-    })
-
 
     return (
         <main className="flex flex-col h-screen max-h-screen overflow-hidden">
