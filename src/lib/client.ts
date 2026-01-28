@@ -6,6 +6,6 @@ import { app } from '../app/api/[[...slugs]]/route'
 export const client =
   // window is only defined in browser
   typeof window !== 'undefined'
-    ? treaty<typeof app>('localhost:3000').api
+    ? treaty<typeof app>(window.location.origin).api
     : treaty(app).api
 

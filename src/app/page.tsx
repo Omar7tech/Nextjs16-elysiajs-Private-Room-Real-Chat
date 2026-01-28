@@ -5,17 +5,19 @@ import { client } from "@/lib/client";
 import { useMutation } from "@tanstack/react-query";
 import { nanoid } from "nanoid";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useUsername } from "./hooks/use-username";
+import { useSearchParams } from "next/navigation";
 
 
-
-export default function Home() {
+function HomeContent() {
   const [btnDisabled, setBtnDisabled] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const username = useUsername();
-
+  const searchParams = useSearchParams();
+  const wasDestroyed = searchParams.get('destroyed') === 'true';
+  const error = searchParams.get('error');
   const { mutate: createRoom } = useMutation({
     mutationFn: async () => {
       setIsLoading(true);
@@ -32,6 +34,24 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8">
 
+        {wasDestroyed && 
+        <div className="bg-red-950/50 p-6">
+          <p className="uppercase text-red-500 text-sm font-bold">Room Destroyed</p>
+          <p className="text-zinc-500 text-xs">All messages were permanently deleted.</p>
+        </div>
+        }
+        {error === 'room_not_found' && 
+        <div className="bg-red-950/50 p-6">
+          <p className="uppercase text-red-500 text-sm font-bold">Room Not Found</p>
+          <p className="text-zinc-500 text-xs">This room may have been deleted or does not exist.</p>
+        </div>
+        }
+        {error === 'room-full' && 
+        <div className="bg-red-950/50 p-6">
+          <p className="uppercase text-red-500 text-sm font-bold">Room Full</p>
+          <p className="text-zinc-500 text-xs">This room is full and cannot accept any more participants.</p>
+        </div>
+        }
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold tracking-tight text-green-500">{">"}
             <TextType
@@ -67,5 +87,13 @@ export default function Home() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen flex-col items-center justify-center p-4"><div className="text-zinc-500">Loading...</div></div>}>
+      <HomeContent />
+    </Suspense>
   );
 }
