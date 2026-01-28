@@ -2,10 +2,12 @@
 
 import { useParams } from "next/navigation"
 import { useRef, useState } from "react"
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { client } from "@/lib/client";
 import { useUsername } from "@/app/hooks/use-username";
-
+import { format } from "date-fns";
+import { useRealtime } from "@/lib/realtime-client";
+import { useRouter } from "next/navigation";
 function formatTimeRemaining(seconds: number) {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = seconds % 60;
@@ -14,12 +16,30 @@ function formatTimeRemaining(seconds: number) {
 
 function Page() {
     const params = useParams();
+    const router = useRouter();
     const username = useUsername();
     const roomId = (params as any).roomId as string;
     const [input, setInput] = useState("");
-    const { mutate: sendMessage , isPending } = useMutation({
+    const { mutate: sendMessage, isPending } = useMutation({
         mutationFn: async ({ text }: { text: string }) => {
             await client.messages.post({ sender: username, text }, { query: { roomId } })
+        }
+        ,
+        onSuccess: () => {
+            setInput("")
+        }
+    })
+
+    useRealtime({
+        channels: [roomId],
+        events: ['chat.message' , 'chat.destroy'] , 
+        onData: ({event}) => {
+            if( event === 'chat.message') {
+                refetch()
+            }
+            if(event === 'chat.destroy') {
+                router.push('/?destroyed=true');
+            }
         }
     })
     const inputRef = useRef<HTMLInputElement>(null);
@@ -33,6 +53,14 @@ function Page() {
         }, 2000);
     }
     const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+    const { data: messages , refetch } = useQuery({
+        queryKey: ["messages", roomId],
+        queryFn: async () => {
+            const res = await client.messages.get({ query: { roomId } });
+            return res.data;
+        }
+    });
+
 
     return (
         <main className="flex flex-col h-screen max-h-screen overflow-hidden">
@@ -52,8 +80,25 @@ function Page() {
                 </div>
                 <button className="text-xs bg-zinc-800 hover:bg-red-600 px-3  py-1.5 rounded text-zinc-400 hover:text-white  font-bold transition-all group flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:text-zinc-500 cursor-pointer"><span className="group-hover:animate-pulse">💣</span>Destroy Now</button>
             </header>
+            {/* MESSAGES */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4  scrollbar-thin">
+                {messages?.messages.length === 0 && (
+                    <div className="flex items-center justify-center h-full">
+                        <p className="text-zinc-600 text-sm font-mono">No messages yet , start the conversation</p>
+                    </div>
+                )}
+                {messages?.messages.map((msg) => (
+                    <div key={msg.id} className="flex flex-col items-start">
 
+                        <div className="max-w-[80%] group">
+                            <div className="flex items-baseline gap-3 mb-1">
+                                <span className={`text-xs font-bold ${msg.sender === username ? 'text-green-500' : 'text-blue-500'}`}>{msg.sender === username ? 'YOU' : msg.sender}</span>
+                                <span className="text-[10px] text-zinc-600">{format(msg.timestamp , "HH:mm") }</span>
+                            </div>
+                            <p className="text-sm text-zinc-300 leading-relaxed break-all">{msg.text}</p>
+                        </div>
+                    </div>
+                ))}
             </div>
             <div className="p-4  border-t border-zinc-800 bg-zinc-900/30">
                 <div className="flex gap-4">
