@@ -25,10 +25,23 @@ function Page() {
     const [input, setInput] = useState("");
     const [isConnecting, setIsConnecting] = useState(true);
 
-    // Handle room connection on component mount
+    // Bot detection and room connection on component mount
     useEffect(() => {
         const connectToRoom = async () => {
             try {
+                // Check for bots
+                const userAgent = navigator.userAgent.toLowerCase();
+                const isBot = userAgent.includes('whatsapp') || 
+                              userAgent.includes('bot') ||
+                              userAgent.includes('crawler') ||
+                              userAgent.includes('spider') ||
+                              !userAgent || userAgent.length < 10;
+                
+                if (isBot) {
+                    router.push('/');
+                    return;
+                }
+                
                 const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
                 
                 if (!token) {
