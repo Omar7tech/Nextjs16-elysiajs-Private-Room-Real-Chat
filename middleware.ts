@@ -5,17 +5,13 @@ import { nanoid } from "nanoid";
 function isBot(req: NextRequest): boolean {
     const userAgent = req.headers.get('user-agent') || '';
     
-    // Block ANY request that has no user-agent or contains bot-like patterns
-    if (!userAgent || userAgent.length < 10) {
-        return true;
-    }
-    
+    // Only block actual bots and crawlers, not real browsers
     const botPatterns = [
-        'whatsapp', 'facebook', 'twitter', 'linkedin', 'telegram', 'slack', 'discord',
-        'googlebot', 'bingbot', 'slurp', 'duckduckbot', 'baiduspider', 'yandexbot',
-        'crawler', 'spider', 'bot', 'curl', 'wget', 'python', 'java', 'node', 'fetch',
-        'axios', 'http', 'requests', 'scrapy', 'selenium', 'puppeteer', 'playwright',
-        'chrome', 'firefox', 'safari', 'edge' // Block browser headless modes
+        'whatsapp', 'facebookexternalhit', 'twitterbot', 'linkedinbot', 'telegrambot',
+        'slackbot', 'discordbot', 'googlebot', 'bingbot', 'slurp', 'duckduckbot',
+        'baiduspider', 'yandexbot', 'crawler', 'spider', 'bot', 'curl', 'wget',
+        'python', 'java', 'node', 'fetch', 'axios', 'http', 'requests', 'scrapy',
+        'selenium', 'puppeteer', 'playwright'
     ];
     
     const userAgentLower = userAgent.toLowerCase();
@@ -25,12 +21,12 @@ function isBot(req: NextRequest): boolean {
 export async function middleware(req: NextRequest) {
     const pathName = req.nextUrl.pathname
     
-    // Block ALL bots from accessing ANY route
-    if (isBot(req)) {
+    // Only block bots from room routes to prevent them from consuming slots
+    const roomMatch = pathName.match(/^\/room\/([^/]+)$/)
+    if(roomMatch && isBot(req)) {
         return new Response('Access denied', { status: 403 })
     }
     
-    const roomMatch = pathName.match(/^\/room\/([^/]+)$/)
     if(!roomMatch) {
         return NextResponse.next()
     }
@@ -71,5 +67,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-    matcher: ['/room/:path*', '/']
+    matcher: '/room/:path*'
 }
