@@ -23,7 +23,8 @@ function Page() {
     const username = useUsername();
     const roomId = (params as any).roomId as string;
     const [input, setInput] = useState("");
-    const [isConnecting, setIsConnecting] = useState(true);
+    const [hasJoined, setHasJoined] = useState(false);
+    const [isJoining, setIsJoining] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
     const [copied, setCopied] = useState(false);
     const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
@@ -41,17 +42,21 @@ function Page() {
     const { data: messages, refetch } = useQuery({
         queryKey: ["messages", roomId],
         queryFn: async () => {
+            if (!hasJoined) return { messages: [] };
             const res = await client.messages.get({ query: { roomId } });
             return res.data;
-        }
+        },
+        enabled: hasJoined
     });
 
     const { data: ttlData } = useQuery({
         queryKey: ['ttl', roomId],
         queryFn: async () => {
+            if (!hasJoined) return { ttl: 0 };
             const res = await client.ttl.get({ query: { roomId } });
             return res.data;
-        }
+        },
+        enabled: hasJoined
     });
 
     const { mutate: destroyRoom } = useMutation({
@@ -61,7 +66,7 @@ function Page() {
     });
 
     useRealtime({
-        channels: [roomId],
+        channels: hasJoined ? [roomId] : [],
         events: ['chat.message', 'chat.destroy'],
         onData: ({ event }) => {
             if (event === 'chat.message') {
@@ -73,60 +78,43 @@ function Page() {
         }
     });
 
-    // Bot detection - runs before any other effects
-    useEffect(() => {
-        const userAgent = navigator.userAgent.toLowerCase();
-        const isBot = userAgent.includes('whatsapp') ||
-            userAgent.includes('bot') ||
-            userAgent.includes('crawler') ||
-            userAgent.includes('spider') ||
-            !userAgent || userAgent.length < 10;
-
-        if (isBot) {
-            router.push('/');
-            return;
-        }
-    }, [router]);
-
-    // Room connection on component mount
-    useEffect(() => {
-        const connectToRoom = async () => {
-            try {
-                const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
-
-                if (!token) {
-                    // Create new token and join room
-                    const newToken = nanoid();
-                    document.cookie = `x-auth-token=${newToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
-
-                    // Add token to room's connected users
-                    const response = await fetch(`/api/rooms/join?roomId=${roomId}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Cookie': `x-auth-token=${newToken}`
-                        }
-                    });
-
-                    if (!response.ok) {
-                        const error = await response.json();
-                        if (response.status === 403) {
-                            router.push('/?error=room-full');
-                        } else if (response.status === 404) {
-                            router.push('/?error=room_not_found');
-                        }
-                        return;
-                    }
-                }
-                setIsConnecting(false);
-            } catch (error) {
-                console.error('Connection error:', error);
-                router.push('/?error=room_not_found');
+    // Join room function
+    const joinRoom = async () => {
+        setIsJoining(true);
+        try {
+            const token = document.cookie.split('; ').find(row => row.startsWith('x-auth-token='))?.split('=')[1];
+            const newToken = token || nanoid();
+            
+            if (!token) {
+                document.cookie = `x-auth-token=${newToken}; path=/; max-age=${60 * 60 * 24 * 7}`;
             }
-        };
 
-        connectToRoom();
-    }, [roomId, router]);
+            const response = await fetch(`/api/rooms/join?roomId=${roomId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Cookie': `x-auth-token=${newToken}`
+                }
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                if (response.status === 403) {
+                    router.push('/?error=room-full');
+                } else if (response.status === 404) {
+                    router.push('/?error=room_not_found');
+                }
+                return;
+            }
+
+            setHasJoined(true);
+        } catch (error) {
+            console.error('Connection error:', error);
+            router.push('/?error=room_not_found');
+        } finally {
+            setIsJoining(false);
+        }
+    };
 
     useEffect(() => {
         if (ttlData?.ttl !== undefined) {
@@ -164,10 +152,37 @@ function Page() {
         }, 2000);
     };
 
-    if (isConnecting) {
+    // Show join room screen if not joined
+    if (!hasJoined) {
         return (
             <main className="flex min-h-screen flex-col items-center justify-center p-4">
-                <div className="text-zinc-500">Connecting to room...</div>
+                <div className="w-full max-w-md space-y-8">
+                    <div className="text-center space-y-2">
+                        <h1 className="text-2xl font-bold tracking-tight text-green-500">{">"} Private Chat Room</h1>
+                        <p className="text-zinc-500 text-sm">Room ID: <span className="font-mono text-green-400">{roomId}</span></p>
+                        <p className="text-zinc-600 text-xs">This room will self-destruct in 10 minutes</p>
+                    </div>
+
+                    <div className="border-zinc-800 bg-zinc-900/50 p-6 backdrop-blur-md">
+                        <div className="space-y-5">
+                            <div className="space-y-2">
+                                <label className="flex items-center text-zinc-500">Your Identity</label>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex-1 bg-zinc-950 border border-zinc-800 text-sm text-zinc-400 font-mono p-2">
+                                        {username}
+                                    </div>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={joinRoom}
+                                disabled={isJoining}
+                                className="gap-3 flex justify-center items-center w-full bg-zinc-100 text-zinc-950 p-3 text-sm font-bold hover:bg-zinc-50 hover:text-black transition-colors mt-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {isJoining ? 'Joining...' : 'Join Room'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
             </main>
         );
     }
